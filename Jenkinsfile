@@ -8,9 +8,9 @@ pipeline {
     environment {
         DOCKER_IMAGE_NAME = 'postman-newman-runner'
         CONTAINER_NAME = 'postman-newman-temp'
-        HTML_REPORT_PATH = 'reports/html/create-booking-api-report.html'
+        HTML_REPORT_PATH = 'reports/html/*.html'
         JUNIT_REPORT_PATH = 'reports/junit/*.xml'
-        JSON_REPORT_PATH = 'reports/json/newman-report.json'
+        JSON_REPORT_PATH = 'reports/json/*.json'
         EMAIL_REPORT_PATH = 'reports/email/email-report.html'
         EMAIL_TO = 'trungtinle301099@gmail.com'
     }
@@ -46,42 +46,51 @@ pipeline {
         }
 
         stage('Run Postman Tests and Collect Reports') {
-    steps {
-        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-            sh '''
-                docker rm -f ${CONTAINER_NAME} || true
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    sh '''
+                        docker rm -f ${CONTAINER_NAME} || true
 
-                docker create --name ${CONTAINER_NAME} \
-                    -e JOB_NAME="${JOB_NAME}" \
-                    -e BUILD_NUMBER="${BUILD_NUMBER}" \
-                    -e BUILD_URL="${BUILD_URL}" \
-                    -e GIT_COMMIT="${GIT_COMMIT}" \
-                    -e BRANCH_NAME="main" \
-                    ${DOCKER_IMAGE_NAME} \
-                    sh -c 'npm run test:postman; TEST_EXIT=$?; if [ "$TEST_EXIT" -eq 0 ]; then export BUILD_STATUS="SUCCESS"; else export BUILD_STATUS="FAILURE"; fi; node scripts/generate-email-report.js || true; exit $TEST_EXIT'
+                        mkdir -p reports/html reports/junit reports/json reports/email
 
-                docker start -a ${CONTAINER_NAME}
+                        echo "JOB_NAME=${JOB_NAME}" > reports/jenkins-build.env
+                        echo "BUILD_NUMBER=${BUILD_NUMBER}" >> reports/jenkins-build.env
+                        echo "BUILD_URL=${BUILD_URL}" >> reports/jenkins-build.env
+                        echo "GIT_COMMIT=${GIT_COMMIT}" >> reports/jenkins-build.env
+                        echo "BRANCH_NAME=main" >> reports/jenkins-build.env
 
-                TEST_EXIT=$?
+                        echo "===== JENKINS BUILD ENV FILE ====="
+                        cat reports/jenkins-build.env
 
-                mkdir -p reports/html reports/junit reports/json reports/email
+                        docker create --name ${CONTAINER_NAME} \
+                            --env-file reports/jenkins-build.env \
+                            ${DOCKER_IMAGE_NAME} \
+                            sh -c 'npm run test:postman; TEST_EXIT=$?; if [ "$TEST_EXIT" -eq 0 ]; then export BUILD_STATUS="SUCCESS"; else export BUILD_STATUS="FAILURE"; fi; echo "===== ENV INSIDE DOCKER ====="; printenv | grep -E "JOB_NAME|BUILD_NUMBER|BUILD_URL|GIT_COMMIT|BRANCH_NAME|BUILD_STATUS"; node scripts/generate-email-report.js || true; exit $TEST_EXIT'
 
-                docker cp ${CONTAINER_NAME}:/app/reports/. reports/ || true
+                        docker start -a ${CONTAINER_NAME}
 
-                docker rm -f ${CONTAINER_NAME} || true
+                        TEST_EXIT=$?
 
-                echo "===== REPORTS GENERATED IN JENKINS WORKSPACE ====="
-                find reports -maxdepth 3 -type f | sort || true
+                        mkdir -p reports/html reports/junit reports/json reports/email
 
-                exit $TEST_EXIT
-            '''
+                        docker cp ${CONTAINER_NAME}:/app/reports/. reports/ || true
+
+                        docker rm -f ${CONTAINER_NAME} || true
+
+                        echo "===== REPORTS GENERATED IN JENKINS WORKSPACE ====="
+                        find reports -maxdepth 3 -type f | sort || true
+
+                        exit $TEST_EXIT
+                    '''
+                }
+            }
         }
     }
-}
 
     post {
         always {
             echo 'Checking generated report files...'
+
             sh '''
                 echo "===== REPORTS TREE ====="
                 find reports -maxdepth 3 -type f | sort || true
@@ -112,7 +121,7 @@ pipeline {
                     mimeType: 'text/html',
                     to: "${EMAIL_TO}",
                     attachLog: true,
-                    attachmentsPattern: 'reports/html/*.html',
+                    attachmentsPattern: 'reports/**/*.html',
                     body: emailBody
                 )
             }
@@ -120,6 +129,7 @@ pipeline {
 
         cleanup {
             echo 'Cleaning Docker resources...'
+
             sh '''
                 docker rm -f ${CONTAINER_NAME} || true
                 docker image prune -f || true
