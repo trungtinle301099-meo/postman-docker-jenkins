@@ -63,15 +63,10 @@ pipeline {
             }
 
             sh '''
-                docker run --rm \
-                  -v "$PWD/reports:/app/reports" \
-                  -e JOB_NAME="${JOB_NAME}" \
-                  -e BUILD_NUMBER="${BUILD_NUMBER}" \
-                  -e BUILD_URL="${BUILD_URL}" \
-                  -e GIT_COMMIT="${GIT_COMMIT}" \
-                  -e BRANCH_NAME="${BRANCH_NAME}" \
-                  -e BUILD_STATUS="${BUILD_STATUS_TEXT}" \
-                  ${DOCKER_IMAGE_NAME} node scripts/generate-email-report.js || true
+                mkdir -p reports/email
+                docker run --rm -v "$PWD/reports:/app/reports" -e JOB_NAME="${JOB_NAME}" -e BUILD_NUMBER="${BUILD_NUMBER}" -e BUILD_URL="${BUILD_URL}" -e GIT_COMMIT="${GIT_COMMIT}" -e BRANCH_NAME="${BRANCH_NAME}" -e BUILD_STATUS="${BUILD_STATUS_TEXT}" ${DOCKER_IMAGE_NAME} node scripts/generate-email-report.js || true
+                echo "===== CHECK EMAIL REPORT FILE ====="
+                ls -la reports/email || true
             '''
 
             echo 'Publishing JUnit report...'
