@@ -7,6 +7,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE_NAME = 'postman-newman-runner'
+        CONTAINER_NAME = 'postman-newman-temp'
         HTML_REPORT_PATH = 'reports/html/create-booking-api-report.html'
         JUNIT_REPORT_PATH = 'reports/junit/create-booking-api-junit.xml'
         JSON_REPORT_PATH = 'reports/json/newman-report.json'
@@ -31,6 +32,7 @@ pipeline {
                 sh '''
                     rm -rf reports
                     mkdir -p reports/html reports/junit reports/json reports/email
+                    docker rm -f ${CONTAINER_NAME} || true
                 '''
             }
         }
@@ -38,16 +40,33 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    docker build -t ${DOCKER_IMAGE_NAME} .
+                    docker build --no-cache -t ${DOCKER_IMAGE_NAME} .
                 '''
             }
         }
 
-        stage('Run Postman Tests with Newman') {
+        stage('Run Postman Tests and Collect Reports') {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                     sh '''
-                        docker run --rm -v "$PWD/reports:/app/reports" ${DOCKER_IMAGE_NAME}
+                        docker rm -f ${CONTAINER_NAME} || true
+
+                        docker create --name ${CONTAINER_NAME} ${DOCKER_IMAGE_NAME} sh -c "npm run test:postman; TEST_EXIT=\\$?; node scripts/generate-email-report.js || true; exit \\$TEST_EXIT"
+
+                        docker start -a ${CONTAINER_NAME}
+
+                        TEST_EXIT=$?
+
+                        mkdir -p reports/html reports/junit reports/json reports/email
+
+                        docker cp ${CONTAINER_NAME}:/app/reports/. reports/ || true
+
+                        docker rm -f ${CONTAINER_NAME} || true
+
+                        echo "===== REPORTS GENERATED IN JENKINS WORKSPACE ====="
+                        find reports -maxdepth 3 -type f | sort || true
+
+                        exit $TEST_EXIT
                     '''
                 }
             }
@@ -56,16 +75,12 @@ pipeline {
 
     post {
         always {
-            echo 'Generating professional email report...'
-
-            script {
-                env.BUILD_STATUS_TEXT = currentBuild.currentResult ?: 'SUCCESS'
-            }
-
+            echo 'Checking generated report files...'
             sh '''
-                mkdir -p reports/email
-                docker run --rm -v "$PWD/reports:/app/reports" -e JOB_NAME="${JOB_NAME}" -e BUILD_NUMBER="${BUILD_NUMBER}" -e BUILD_URL="${BUILD_URL}" -e GIT_COMMIT="${GIT_COMMIT}" -e BRANCH_NAME="${BRANCH_NAME}" -e BUILD_STATUS="${BUILD_STATUS_TEXT}" ${DOCKER_IMAGE_NAME} node scripts/generate-email-report.js || true
-                echo "===== CHECK EMAIL REPORT FILE ====="
+                echo "===== REPORTS TREE ====="
+                find reports -maxdepth 3 -type f | sort || true
+
+                echo "===== EMAIL REPORT FOLDER ====="
                 ls -la reports/email || true
             '''
 
@@ -82,7 +97,8 @@ pipeline {
                     : """
                         <h2>Postman API Automation Test Report</h2>
                         <p><b>Status:</b> ${currentBuild.currentResult}</p>
-                        <p>Email report file was not generated. Please check Jenkins console log.</p>
+                        <p><b>Error:</b> Email report file was not generated.</p>
+                        <p>Please check Jenkins console log and Newman JSON report.</p>
                       """
 
                 emailext(
@@ -97,8 +113,9 @@ pipeline {
         }
 
         cleanup {
-            echo 'Cleaning unused Docker image...'
+            echo 'Cleaning Docker resources...'
             sh '''
+                docker rm -f ${CONTAINER_NAME} || true
                 docker image prune -f || true
             '''
         }
