@@ -8,6 +8,6 @@ RUN npm ci
 
 COPY . .
 
-RUN mkdir -p reports/html reports/junit
+RUN mkdir -p reports/html reports/junit reports/json reports/email
 
 CMD ["npm", "run", "test:postman"]
