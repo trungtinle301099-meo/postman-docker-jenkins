@@ -9,7 +9,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'postman-newman-runner'
         CONTAINER_NAME = 'postman-newman-temp'
         HTML_REPORT_PATH = 'reports/html/create-booking-api-report.html'
-        JUNIT_REPORT_PATH = 'reports/junit/create-booking-api-junit.xml'
+        JUNIT_REPORT_PATH = 'reports/junit/*.xml'
         JSON_REPORT_PATH = 'reports/json/newman-report.json'
         EMAIL_REPORT_PATH = 'reports/email/email-report.html'
         EMAIL_TO = 'trungtinle301099@gmail.com'

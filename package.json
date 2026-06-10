@@ -1,10 +1,10 @@
 {
   "name": "postman-docker-jenkins-automation",
   "version": "1.0.0",
-  "description": "Run Postman Collection with Newman, Docker and Jenkins scheduled build",
+  "description": "Run all Postman Collections with all environments using Newman, Docker and Jenkins",
   "scripts": {
-    "test:postman": "newman run collections/create-booking-api.postman_collection.json -e environments/Dev.postman_environment.json -r cli,htmlextra,junit,json --reporter-htmlextra-export reports/html/create-booking-api-report.html --reporter-junit-export reports/junit/create-booking-api-junit.xml --reporter-json-export reports/json/newman-report.json",
-    "test:postman:no-env": "newman run collections/create-booking-api.postman_collection.json -r cli,htmlextra,junit,json --reporter-htmlextra-export reports/html/create-booking-api-report.html --reporter-junit-export reports/junit/create-booking-api-junit.xml --reporter-json-export reports/json/newman-report.json"
+    "test:postman": "sh scripts/run-all-collections.sh",
+    "test:postman:single": "newman run collections/create-booking-api.postman_collection.json -e environments/Dev.postman_environment.json -r cli,htmlextra,junit,json --reporter-htmlextra-export reports/html/create-booking-api-report.html --reporter-junit-export reports/junit/create-booking-api-junit.xml --reporter-json-export reports/json/newman-report.json"
   },
   "devDependencies": {
     "newman": "^6.2.1",
