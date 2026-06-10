@@ -9,6 +9,92 @@
   "item": [
     {
       "name": "createbooking Copy",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.collectionVariables.set(\"dataFirstName\", \"Jim\");",
+              "pm.collectionVariables.set(\"dataLastName\", \"Brown\");",
+              "pm.collectionVariables.set(\"dataTotalPrice\", 111);",
+              "pm.collectionVariables.set(\"dataDepositPaid\", true);",
+              "pm.collectionVariables.set(\"dataCheckIn\", \"2018-01-01\");",
+              "pm.collectionVariables.set(\"dataCheckOut\", \"2019-01-01\");",
+              "pm.collectionVariables.set(\"dataAdditionalNeeds\", \"Breakfast\");"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const getResponse = pm.response.json();",
+              "const ExpectedFirstName = pm.collectionVariables.get(\"dataFirstName\");",
+              "const ExpectedLastName = pm.collectionVariables.get(\"dataLastName\");",
+              "const ExpectedTotalPrice = pm.collectionVariables.get(\"dataTotalPrice\");",
+              "const ExpectedCheckIn = pm.collectionVariables.get(\"dataCheckIn\");",
+              "const ExpectedCheckOut = pm.collectionVariables.get(\"dataCheckOut\");",
+              "const ExpectedAdditionalNeeds = pm.collectionVariables.get(\"dataAdditionalNeeds\");",
+              "const ExpectedDepositPaid = pm.collectionVariables.get(\"dataDepositPaid\");",
+              "",
+              "// const firstName_actual = getResponse.booking.firstname;",
+              "// const lastName_actual = getResponse.booking.lastname;",
+              "// const totalprice_actual = getResponse.booking.totalprice;",
+              "// const depositpaid_actual = getResponse.booking.depositpaid;",
+              "// const checkin_actual = getResponse.booking.bookingdates.checkin;",
+              "// const checkout_actual = getResponse.booking.bookingdates.checkout;",
+              "// const additionalneeds_actual = getResponse.booking.additionalneeds;",
+              "",
+              "",
+              "pm.test(\"firstname is correct\", function () {",
+              "    // pm.expect(firstName_actual).to.eql(\"Jim\");",
+              "    pm.expect(getResponse.booking.firstname).to.eql(ExpectedFirstName);",
+              "});",
+              "",
+              "pm.test(\"lastname is correct\", function () {",
+              "    // pm.expect(lastName_actual).to.eql(\"Brown\");",
+              "    pm.expect(getResponse.booking.lastname).to.eql(ExpectedLastName);",
+              "});",
+              "",
+              "pm.test(\"totalprice is correct\", function () {",
+              "    // pm.expect(totalprice_actual).to.eql(111);",
+              "    pm.expect(getResponse.booking.totalprice).to.eql(ExpectedTotalPrice);",
+              "});",
+              "",
+              "pm.test(\"depositpaid is correct\", function () {",
+              "    // pm.expect(depositpaid_actual).to.eql(true);",
+              "    pm.expect(getResponse.booking.depositpaid).to.eql(ExpectedDepositPaid);",
+              "});",
+              "",
+              "pm.test(\"checkin is correct\", function () {",
+              "    // pm.expect(checkin_actual).to.eql(\"2018-01-01\");",
+              "    pm.expect(getResponse.booking.bookingdates.checkin).to.eql(ExpectedCheckIn);",
+              "});",
+              "",
+              "pm.test(\"checkout is correct\", function () {",
+              "    // pm.expect(checkout_actual).to.eql(\"2019-01-01\");",
+              "    pm.expect(getResponse.booking.bookingdates.checkout).to.eql(ExpectedCheckOut);",
+              "});",
+              "",
+              "pm.test(\"additionalneeds is correct\", function () {",
+              "    // pm.expect(additionalneeds_actual).to.eql(\"Breakfast\");",
+              "    pm.expect(getResponse.booking.additionalneeds).to.eql(ExpectedAdditionalNeeds);",
+              "});",
+              "console.log(getResponse);"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -25,7 +111,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n\"firstname\" : \"Jim\",\n\"lastname\" : \"Brown\",\n\"totalprice\" : 111,\n\"depositpaid\" : true,\n\"bookingdates\" : {\n\"checkin\" : \"2018-01-01\",\n\"checkout\" : \"2019-01-01\"\n},\n\"additionalneeds\" : \"Breakfast\"\n}",
+          "raw": "{\n\"firstname\" : \"{{dataFirstName}}\",\n\"lastname\" : \"{{dataLastName}}\",\n\"totalprice\" : {{dataTotalPrice}},\n\"depositpaid\" : {{dataDepositPaid}},\n\"bookingdates\" : {\n\"checkin\" : \"{{dataCheckIn}}\",\n\"checkout\" : \"{{dataCheckOut}}\"\n},\n\"additionalneeds\" : \"{{dataAdditionalNeeds}}\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -33,12 +119,9 @@
           }
         },
         "url": {
-          "raw": "https://restful-booker.herokuapp.com/booking",
-          "protocol": "https",
+          "raw": "{{URL}}/booking",
           "host": [
-            "restful-booker",
-            "herokuapp",
-            "com"
+            "{{URL}}"
           ],
           "path": [
             "booking"
