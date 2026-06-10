@@ -6,15 +6,7 @@ pipeline {
 
 
     triggers {
-
-        cron('''
-
-TZ=Asia/Ho_Chi_Minh
-
-0 7,19 * * *
-
-''')
-
+        cron('0 7,19 * * *')
     }
 
 
