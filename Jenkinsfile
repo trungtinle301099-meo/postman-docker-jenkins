@@ -8,9 +8,9 @@ pipeline {
     environment {
         DOCKER_IMAGE_NAME = 'postman-newman-runner'
         CONTAINER_NAME = 'postman-newman-temp'
-        HTML_REPORT_PATH = 'reports/html/create-booking-api-report.html'
+        HTML_REPORT_PATH = 'reports/html/*.html'
         JUNIT_REPORT_PATH = 'reports/junit/*.xml'
-        JSON_REPORT_PATH = 'reports/json/newman-report.json'
+        JSON_REPORT_PATH = 'reports/json/*.json'
         EMAIL_REPORT_PATH = 'reports/email/email-report.html'
         EMAIL_TO = 'trungtinle301099@gmail.com'
     }
@@ -51,7 +51,21 @@ pipeline {
                     sh '''
                         docker rm -f ${CONTAINER_NAME} || true
 
-                        docker create --name ${CONTAINER_NAME} ${DOCKER_IMAGE_NAME} sh -c "npm run test:postman; TEST_EXIT=\\$?; node scripts/generate-email-report.js || true; exit \\$TEST_EXIT"
+                        mkdir -p reports/html reports/junit reports/json reports/email
+
+                        echo "JOB_NAME=${JOB_NAME}" > reports/jenkins-build.env
+                        echo "BUILD_NUMBER=${BUILD_NUMBER}" >> reports/jenkins-build.env
+                        echo "BUILD_URL=${BUILD_URL}" >> reports/jenkins-build.env
+                        echo "GIT_COMMIT=${GIT_COMMIT}" >> reports/jenkins-build.env
+                        echo "BRANCH_NAME=main" >> reports/jenkins-build.env
+
+                        echo "===== JENKINS BUILD ENV FILE ====="
+                        cat reports/jenkins-build.env
+
+                        docker create --name ${CONTAINER_NAME} \
+                            --env-file reports/jenkins-build.env \
+                            ${DOCKER_IMAGE_NAME} \
+                            sh -c 'npm run test:postman; TEST_EXIT=$?; if [ "$TEST_EXIT" -eq 0 ]; then export BUILD_STATUS="SUCCESS"; else export BUILD_STATUS="FAILURE"; fi; echo "===== ENV INSIDE DOCKER ====="; printenv | grep -E "JOB_NAME|BUILD_NUMBER|BUILD_URL|GIT_COMMIT|BRANCH_NAME|BUILD_STATUS"; node scripts/generate-email-report.js || true; exit $TEST_EXIT'
 
                         docker start -a ${CONTAINER_NAME}
 
@@ -106,7 +120,7 @@ pipeline {
                     mimeType: 'text/html',
                     to: "${EMAIL_TO}",
                     attachLog: true,
-                    attachmentsPattern: 'reports/html/*.html',
+                    attachmentsPattern: 'reports/**/*.html',
                     body: emailBody
                 )
             }
