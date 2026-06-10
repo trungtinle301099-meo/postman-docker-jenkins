@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const REPORT_JSON_PATH = path.join(process.cwd(), 'reports/json/newman-report.json');
-const EMAIL_REPORT_PATH = path.join(process.cwd(), 'reports/email/email-report.html');
-const ENV_PATH = path.join(process.cwd(), 'environments/Dev.postman_environment.json');
+const ROOT = process.cwd();
+const JSON_REPORT_DIR = path.join(ROOT, 'reports/json');
+const EMAIL_REPORT_PATH = path.join(ROOT, 'reports/email/email-report.html');
+const ENV_DIR = path.join(ROOT, 'environments');
 
 function escapeHtml(value) {
   if (value === undefined || value === null || value === '') return 'N/A';
@@ -20,180 +21,248 @@ function percent(passed, total) {
   return ((passed / total) * 100).toFixed(2);
 }
 
-function getEnvValue(key) {
-  try {
-    if (!fs.existsSync(ENV_PATH)) return 'N/A';
-    const env = JSON.parse(fs.readFileSync(ENV_PATH, 'utf8'));
-    const item = (env.values || []).find(v => v.key === key);
-    return item?.value || item?.currentValue || 'N/A';
-  } catch {
-    return 'N/A';
-  }
-}
-
 function statusBadge(status) {
   const normalized = String(status || 'UNKNOWN').toUpperCase();
 
-  if (normalized === 'PASS' || normalized === 'PASSED' || normalized === 'SUCCESS') {
+  if (normalized === 'PASSED' || normalized === 'SUCCESS') {
     return '<span style="color:#16a34a;font-weight:bold;">PASSED</span>';
   }
 
-  if (normalized === 'FAIL' || normalized === 'FAILED' || normalized === 'FAILURE') {
+  if (normalized === 'FAILED' || normalized === 'FAILURE') {
     return '<span style="color:#dc2626;font-weight:bold;">FAILED</span>';
   }
 
   return `<span style="color:#d97706;font-weight:bold;">${escapeHtml(normalized)}</span>`;
 }
 
-function severityByAssertion(assertionName) {
-  const name = String(assertionName || '').toLowerCase();
+function getJsonFiles() {
+  if (!fs.existsSync(JSON_REPORT_DIR)) return [];
 
-  if (name.includes('status code')) return 'Critical';
-  if (name.includes('firstname')) return 'High';
-  if (name.includes('lastname')) return 'High';
-  if (name.includes('totalprice')) return 'High';
-  if (name.includes('depositpaid')) return 'Medium';
-  if (name.includes('checkin')) return 'Medium';
-  if (name.includes('checkout')) return 'Medium';
-  if (name.includes('additionalneeds')) return 'Low';
-
-  return 'Medium';
+  return fs
+    .readdirSync(JSON_REPORT_DIR)
+    .filter(file => file.endsWith('.json'))
+    .map(file => path.join(JSON_REPORT_DIR, file));
 }
 
-function expectedResultByAssertion(assertionName) {
-  const name = String(assertionName || '').toLowerCase();
+function readEnvironmentInfo() {
+  if (!fs.existsSync(ENV_DIR)) return [];
 
-  if (name.includes('status code')) return 'API returns HTTP 200';
-  if (name.includes('firstname')) return 'Response firstname matches request data';
-  if (name.includes('lastname')) return 'Response lastname matches request data';
-  if (name.includes('totalprice')) return 'Response totalprice matches request data';
-  if (name.includes('depositpaid')) return 'Response depositpaid matches request data';
-  if (name.includes('checkin')) return 'Response checkin date matches request data';
-  if (name.includes('checkout')) return 'Response checkout date matches request data';
-  if (name.includes('additionalneeds')) return 'Response additionalneeds matches request data';
+  return fs
+    .readdirSync(ENV_DIR)
+    .filter(file => file.endsWith('.postman_environment.json'))
+    .map((file, index) => {
+      const filePath = path.join(ENV_DIR, file);
+      const envName = file.replace('.postman_environment.json', '');
 
-  return 'Expected result should match test assertion';
+      let baseUrl = 'N/A';
+
+      try {
+        const env = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const values = env.values || [];
+        const urlItem =
+          values.find(item => item.key === 'URL') ||
+          values.find(item => item.key === 'BASE_URL') ||
+          values.find(item => item.key === 'baseUrl') ||
+          values.find(item => item.key === 'url');
+
+        baseUrl = urlItem?.value || urlItem?.currentValue || 'N/A';
+      } catch {
+        baseUrl = 'N/A';
+      }
+
+      return {
+        no: index + 1,
+        envName,
+        baseUrl,
+      };
+    });
 }
 
-function createFallbackReport(message) {
-  return `
-  <h2>Postman API Automation Test Report</h2>
-  <p><b>Status:</b> ${statusBadge(process.env.BUILD_STATUS || 'FAILURE')}</p>
-  <p><b>Message:</b> ${escapeHtml(message)}</p>
-  <p>Please check Jenkins console log for details.</p>
-  `;
+function parseReportName(fileName, collectionNameFromReport) {
+  const cleanName = fileName.replace('-newman-report.json', '');
+
+  const envFiles = fs.existsSync(ENV_DIR)
+    ? fs.readdirSync(ENV_DIR)
+        .filter(file => file.endsWith('.postman_environment.json'))
+        .map(file => file.replace('.postman_environment.json', ''))
+    : [];
+
+  const matchedEnv = envFiles.find(env => cleanName.endsWith(`-${env}`));
+
+  if (matchedEnv) {
+    return {
+      collectionName: cleanName.replace(`-${matchedEnv}`, ''),
+      environmentName: matchedEnv,
+    };
+  }
+
+  return {
+    collectionName: collectionNameFromReport || cleanName,
+    environmentName: 'N/A',
+  };
 }
 
 function main() {
   fs.mkdirSync(path.dirname(EMAIL_REPORT_PATH), { recursive: true });
 
-  if (!fs.existsSync(REPORT_JSON_PATH)) {
+  const jsonFiles = getJsonFiles();
+
+  if (jsonFiles.length === 0) {
     fs.writeFileSync(
       EMAIL_REPORT_PATH,
-      createFallbackReport('Newman JSON report was not found. Email report could not be generated from test result data.'),
+      `
+      <h2>POSTMAN API AUTOMATION TEST REPORT</h2>
+      <p><b>Status:</b> ${statusBadge(process.env.BUILD_STATUS || 'FAILURE')}</p>
+      <p><b>Error:</b> No Newman JSON report files found in reports/json.</p>
+      <p>Please check Jenkins console log and Newman execution result.</p>
+      `,
       'utf8'
     );
     return;
   }
 
-  const report = JSON.parse(fs.readFileSync(REPORT_JSON_PATH, 'utf8'));
-  const run = report.run || {};
-  const stats = run.stats || {};
-  const executions = run.executions || [];
-  const failures = run.failures || [];
+  const results = [];
+  const failedItems = [];
 
-  const requestTotal = stats.requests?.total || 0;
-  const requestFailed = stats.requests?.failed || 0;
-  const requestPassed = Math.max(requestTotal - requestFailed, 0);
+  let totalRequests = 0;
+  let failedRequests = 0;
+  let totalAssertions = 0;
+  let failedAssertions = 0;
+  let totalTestScripts = 0;
+  let failedTestScripts = 0;
 
-  const assertionTotal = stats.assertions?.total || 0;
-  const assertionFailed = stats.assertions?.failed || 0;
-  const assertionPassed = Math.max(assertionTotal - assertionFailed, 0);
+  for (const jsonFile of jsonFiles) {
+    const fileName = path.basename(jsonFile);
+    const report = JSON.parse(fs.readFileSync(jsonFile, 'utf8'));
 
-  const scriptTotal = stats.testScripts?.total || 0;
-  const scriptFailed = stats.testScripts?.failed || 0;
-  const scriptPassed = Math.max(scriptTotal - scriptFailed, 0);
+    const run = report.run || {};
+    const stats = run.stats || {};
+    const collectionNameFromReport = report.collection?.info?.name;
 
-  const buildStatus = process.env.BUILD_STATUS || (assertionFailed > 0 || requestFailed > 0 ? 'FAILURE' : 'SUCCESS');
-  const statusColor = buildStatus === 'SUCCESS' ? '#16a34a' : '#dc2626';
+    const parsedName = parseReportName(fileName, collectionNameFromReport);
 
-  const firstExecution = executions[0] || {};
-  const request = firstExecution.request || {};
-  const response = firstExecution.response || {};
-  const method = request.method || 'POST';
-  const endpoint = '/booking';
-  const baseUrl = getEnvValue('URL');
+    const requestTotal = stats.requests?.total || 0;
+    const requestFailed = stats.requests?.failed || 0;
+    const requestPassed = Math.max(requestTotal - requestFailed, 0);
 
-  let assertionRows = '';
-  let index = 1;
+    const assertionTotal = stats.assertions?.total || 0;
+    const assertionFailed = stats.assertions?.failed || 0;
+    const assertionPassed = Math.max(assertionTotal - assertionFailed, 0);
 
-  executions.forEach(execution => {
-    const responseCode = execution.response?.code ? `HTTP ${execution.response.code}` : 'No response';
-    const assertions = execution.assertions || [];
+    const scriptTotal = stats.testScripts?.total || 0;
+    const scriptFailed = stats.testScripts?.failed || 0;
+    const scriptPassed = Math.max(scriptTotal - scriptFailed, 0);
 
-    assertions.forEach(assertion => {
-      const assertionName = assertion.assertion || 'Unnamed assertion';
-      const isFailed = Boolean(assertion.error);
-      const status = isFailed ? 'FAILED' : 'PASSED';
-      const actualResult = isFailed
-        ? assertion.error?.message || 'Assertion failed'
-        : assertionName.toLowerCase().includes('status code')
-          ? responseCode
-          : 'Matched expected result';
+    const failures = run.failures || [];
+    const runFailed = requestFailed > 0 || assertionFailed > 0 || scriptFailed > 0 || failures.length > 0;
 
-      assertionRows += `
-        <tr>
-          <td>${index}</td>
-          <td>${escapeHtml(assertionName)}</td>
-          <td>${escapeHtml(expectedResultByAssertion(assertionName))}</td>
-          <td>${escapeHtml(actualResult)}</td>
-          <td>${statusBadge(status)}</td>
-          <td>${escapeHtml(severityByAssertion(assertionName))}</td>
-          <td>${isFailed ? 'Need investigation' : 'Passed as expected'}</td>
-        </tr>
-      `;
-      index += 1;
+    totalRequests += requestTotal;
+    failedRequests += requestFailed;
+    totalAssertions += assertionTotal;
+    failedAssertions += assertionFailed;
+    totalTestScripts += scriptTotal;
+    failedTestScripts += scriptFailed;
+
+    results.push({
+      collectionName: parsedName.collectionName,
+      environmentName: parsedName.environmentName,
+      requestTotal,
+      requestPassed,
+      requestFailed,
+      assertionTotal,
+      assertionPassed,
+      assertionFailed,
+      scriptTotal,
+      scriptPassed,
+      scriptFailed,
+      passRate: percent(assertionPassed, assertionTotal),
+      status: runFailed ? 'FAILED' : 'PASSED',
+      htmlReport: fileName.replace('-newman-report.json', '-report.html'),
     });
-  });
 
-  if (!assertionRows) {
-    assertionRows = `
-      <tr>
-        <td colspan="7">No assertion details found in Newman JSON report.</td>
-      </tr>
-    `;
-  }
-
-  let failedRows = '';
-
-  if (failures.length === 0) {
-    failedRows = `
-      <tr>
-        <td colspan="7" style="color:#16a34a;font-weight:bold;">
-          No failed test detected. All API requests and assertions passed successfully.
-        </td>
-      </tr>
-    `;
-  } else {
-    failures.forEach((failure, i) => {
-      const failedItem = failure.source?.name || failure.parent?.name || 'Unknown item';
+    failures.forEach(failure => {
       const errorName = failure.error?.name || 'Unknown Error';
       const errorMessage = failure.error?.message || 'No error message';
-      const failureType = errorName.includes('Assertion') ? 'Assertion' : 'Request / Script';
+      const failedItem =
+        failure.source?.name ||
+        failure.parent?.name ||
+        failure.cursor?.ref ||
+        'Unknown item';
 
-      failedRows += `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${escapeHtml(failedItem)}</td>
-          <td>${escapeHtml(failureType)}</td>
-          <td>${escapeHtml(errorMessage)}</td>
-          <td>${escapeHtml(errorName)}</td>
-          <td>May impact API validation reliability or business flow verification.</td>
-          <td>Review failed request, response body, environment variables and assertion logic.</td>
-        </tr>
-      `;
+      failedItems.push({
+        collectionName: parsedName.collectionName,
+        environmentName: parsedName.environmentName,
+        failedItem,
+        failureType: errorName.includes('Assertion') ? 'Assertion' : 'Request / Script',
+        errorMessage,
+      });
     });
   }
+
+  const passedRequests = Math.max(totalRequests - failedRequests, 0);
+  const passedAssertions = Math.max(totalAssertions - failedAssertions, 0);
+  const passedTestScripts = Math.max(totalTestScripts - failedTestScripts, 0);
+
+  const totalRuns = results.length;
+  const failedRuns = results.filter(item => item.status === 'FAILED').length;
+  const passedRuns = Math.max(totalRuns - failedRuns, 0);
+
+  const uniqueCollections = new Set(results.map(item => item.collectionName)).size;
+  const uniqueEnvironments = new Set(results.map(item => item.environmentName)).size;
+
+  const buildStatus = process.env.BUILD_STATUS || (failedRuns > 0 ? 'FAILURE' : 'SUCCESS');
+  const statusColor = buildStatus === 'SUCCESS' ? '#16a34a' : '#dc2626';
+
+  const resultRows = results.map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(item.collectionName)}</td>
+      <td>${escapeHtml(item.environmentName)}</td>
+      <td>${item.requestTotal}</td>
+      <td>${item.assertionTotal}</td>
+      <td style="color:${item.assertionFailed > 0 ? '#dc2626' : '#16a34a'};font-weight:bold;">${item.assertionFailed}</td>
+      <td>${item.passRate}%</td>
+      <td>${statusBadge(item.status)}</td>
+      <td>${escapeHtml(item.htmlReport)}</td>
+    </tr>
+  `).join('');
+
+  const failedRows = failedItems.length === 0
+    ? `
+      <tr>
+        <td colspan="7" style="color:#16a34a;font-weight:bold;">
+          No failed test detected. All collections and environments passed successfully.
+        </td>
+      </tr>
+    `
+    : failedItems.map((item, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(item.collectionName)}</td>
+        <td>${escapeHtml(item.environmentName)}</td>
+        <td>${escapeHtml(item.failedItem)}</td>
+        <td>${escapeHtml(item.failureType)}</td>
+        <td>${escapeHtml(item.errorMessage)}</td>
+        <td>Review request, response, test data, environment variables and assertion logic.</td>
+      </tr>
+    `).join('');
+
+  const envInfo = readEnvironmentInfo();
+
+  const envRows = envInfo.length === 0
+    ? `
+      <tr>
+        <td colspan="4">No environment files found.</td>
+      </tr>
+    `
+    : envInfo.map(item => `
+      <tr>
+        <td>${item.no}</td>
+        <td>${escapeHtml(item.envName)}</td>
+        <td>${escapeHtml(item.baseUrl)}</td>
+        <td>Executed if matched by Newman run</td>
+      </tr>
+    `).join('');
 
   const html = `
 <!DOCTYPE html>
@@ -246,46 +315,37 @@ function main() {
       color: #6b7280;
       font-size: 13px;
     }
-
-    .summary-title {
-      margin-top: 0;
-      color: #6b7280;
-    }
   </style>
 </head>
 <body>
   <h2>POSTMAN API AUTOMATION TEST REPORT</h2>
-  <p class="summary-title">Automated API test execution report generated by Jenkins, Docker and Newman.</p>
+  <p class="muted">Multi-collection and multi-environment automated API test report generated by Jenkins, Docker and Newman.</p>
 
   <h3>1. Executive Summary</h3>
   <table>
     <tr>
-      <th>Project / Job Name</th>
+      <th>Jenkins Job</th>
       <td>${escapeHtml(process.env.JOB_NAME)}</td>
-    </tr>
-    <tr>
-      <th>Collection</th>
-      <td>Create booking API</td>
-    </tr>
-    <tr>
-      <th>Environment</th>
-      <td>Dev</td>
     </tr>
     <tr>
       <th>Execution Tool</th>
       <td>Jenkins + Docker + Newman</td>
     </tr>
     <tr>
-      <th>Execution Type</th>
-      <td>Scheduled / Manual</td>
+      <th>Execution Scope</th>
+      <td>All Postman Collections x All Environments</td>
     </tr>
     <tr>
-      <th>Schedule</th>
-      <td>07:00 and 19:00 Asia/Ho_Chi_Minh</td>
+      <th>Total Collections</th>
+      <td>${uniqueCollections}</td>
     </tr>
     <tr>
-      <th>Build Number</th>
-      <td>#${escapeHtml(process.env.BUILD_NUMBER)}</td>
+      <th>Total Environments</th>
+      <td>${uniqueEnvironments}</td>
+    </tr>
+    <tr>
+      <th>Total Runs</th>
+      <td>${totalRuns}</td>
     </tr>
     <tr>
       <th>Build Status</th>
@@ -296,12 +356,12 @@ function main() {
       <td>${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh' })} Asia/Ho_Chi_Minh</td>
     </tr>
     <tr>
-      <th>Executed By</th>
-      <td>Jenkins Automation</td>
+      <th>Schedule</th>
+      <td>07:00 and 19:00 Asia/Ho_Chi_Minh</td>
     </tr>
   </table>
 
-  <h3>2. Test Execution Summary</h3>
+  <h3>2. Overall Test Execution Summary</h3>
   <table>
     <tr>
       <th>Metric</th>
@@ -311,109 +371,77 @@ function main() {
       <th>Pass Rate</th>
     </tr>
     <tr>
+      <td>Collection Runs</td>
+      <td>${totalRuns}</td>
+      <td style="color:#16a34a;font-weight:bold;">${passedRuns}</td>
+      <td style="color:#dc2626;font-weight:bold;">${failedRuns}</td>
+      <td>${percent(passedRuns, totalRuns)}%</td>
+    </tr>
+    <tr>
       <td>Requests</td>
-      <td>${requestTotal}</td>
-      <td style="color:#16a34a;font-weight:bold;">${requestPassed}</td>
-      <td style="color:#dc2626;font-weight:bold;">${requestFailed}</td>
-      <td>${percent(requestPassed, requestTotal)}%</td>
+      <td>${totalRequests}</td>
+      <td style="color:#16a34a;font-weight:bold;">${passedRequests}</td>
+      <td style="color:#dc2626;font-weight:bold;">${failedRequests}</td>
+      <td>${percent(passedRequests, totalRequests)}%</td>
     </tr>
     <tr>
       <td>Assertions</td>
-      <td>${assertionTotal}</td>
-      <td style="color:#16a34a;font-weight:bold;">${assertionPassed}</td>
-      <td style="color:#dc2626;font-weight:bold;">${assertionFailed}</td>
-      <td>${percent(assertionPassed, assertionTotal)}%</td>
+      <td>${totalAssertions}</td>
+      <td style="color:#16a34a;font-weight:bold;">${passedAssertions}</td>
+      <td style="color:#dc2626;font-weight:bold;">${failedAssertions}</td>
+      <td>${percent(passedAssertions, totalAssertions)}%</td>
     </tr>
     <tr>
       <td>Test Scripts</td>
-      <td>${scriptTotal}</td>
-      <td style="color:#16a34a;font-weight:bold;">${scriptPassed}</td>
-      <td style="color:#dc2626;font-weight:bold;">${scriptFailed}</td>
-      <td>${percent(scriptPassed, scriptTotal)}%</td>
+      <td>${totalTestScripts}</td>
+      <td style="color:#16a34a;font-weight:bold;">${passedTestScripts}</td>
+      <td style="color:#dc2626;font-weight:bold;">${failedTestScripts}</td>
+      <td>${percent(passedTestScripts, totalTestScripts)}%</td>
     </tr>
   </table>
 
-  <h3>3. API Scope</h3>
+  <h3>3. Collection x Environment Result Matrix</h3>
   <table>
     <tr>
       <th>No.</th>
-      <th>API Name</th>
-      <th>Method</th>
-      <th>Endpoint</th>
-      <th>Test Purpose</th>
-      <th>Priority</th>
-    </tr>
-    <tr>
-      <td>1</td>
-      <td>Create Booking</td>
-      <td><b>${escapeHtml(method)}</b></td>
-      <td>${escapeHtml(endpoint)}</td>
-      <td>Verify booking can be created successfully with valid request body.</td>
-      <td>High</td>
-    </tr>
-  </table>
-
-  <h3>4. Test Case Result Details</h3>
-  <table>
-    <tr>
-      <th>No.</th>
-      <th>Test Case / Assertion</th>
-      <th>Expected Result</th>
-      <th>Actual Result</th>
+      <th>Collection</th>
+      <th>Environment</th>
+      <th>Requests</th>
+      <th>Assertions</th>
+      <th>Failed</th>
+      <th>Pass Rate</th>
       <th>Status</th>
-      <th>Severity if Failed</th>
-      <th>Notes</th>
+      <th>HTML Report</th>
     </tr>
-    ${assertionRows}
+    ${resultRows}
   </table>
 
-  <h3>5. Failed Test Analysis</h3>
+  <h3>4. Failed Test Analysis</h3>
   <table>
     <tr>
       <th>No.</th>
+      <th>Collection</th>
+      <th>Environment</th>
       <th>Failed Item</th>
       <th>Failure Type</th>
       <th>Error Message</th>
-      <th>Possible Root Cause</th>
-      <th>Impact</th>
       <th>Recommended Action</th>
     </tr>
     ${failedRows}
   </table>
 
-  <h3>6. Environment & Test Data</h3>
+  <h3>5. Environment Coverage</h3>
   <table>
     <tr>
+      <th>No.</th>
       <th>Environment</th>
-      <td>Dev</td>
-    </tr>
-    <tr>
       <th>Base URL</th>
-      <td>${escapeHtml(baseUrl)}</td>
+      <th>Status</th>
     </tr>
-    <tr>
-      <th>Collection File</th>
-      <td>collections/create-booking-api.postman_collection.json</td>
-    </tr>
-    <tr>
-      <th>Environment File</th>
-      <td>environments/Dev.postman_environment.json</td>
-    </tr>
-    <tr>
-      <th>Data File</th>
-      <td>N/A</td>
-    </tr>
-    <tr>
-      <th>Docker Image</th>
-      <td>postman-newman-runner</td>
-    </tr>
-    <tr>
-      <th>Newman Reporter</th>
-      <td>cli, htmlextra, junit, json</td>
-    </tr>
+    ${envRows}
   </table>
 
-  <h3>7. Jenkins Build Information</h3>
+  <h3>6. Jenkins Build Information</h3>
   <table>
     <tr>
       <th>Jenkins Job</th>
@@ -443,13 +471,9 @@ function main() {
       <th>Console Log</th>
       <td><a href="${escapeHtml(process.env.BUILD_URL)}console">${escapeHtml(process.env.BUILD_URL)}console</a></td>
     </tr>
-    <tr>
-      <th>Duration</th>
-      <td>Please check Jenkins build page</td>
-    </tr>
   </table>
 
-  <h3>8. Reports & Evidence</h3>
+  <h3>7. Reports & Evidence</h3>
   <table>
     <tr>
       <th>Evidence Type</th>
@@ -457,31 +481,31 @@ function main() {
       <th>Location</th>
     </tr>
     <tr>
-      <td>Newman HTML Report</td>
+      <td>Newman HTML Reports</td>
       <td>Generated</td>
       <td>Attached in email / Jenkins artifacts</td>
     </tr>
     <tr>
-      <td>JUnit Report</td>
+      <td>JUnit Reports</td>
       <td>Published</td>
       <td>Jenkins Test Result</td>
+    </tr>
+    <tr>
+      <td>JSON Reports</td>
+      <td>Archived</td>
+      <td>Jenkins artifacts</td>
     </tr>
     <tr>
       <td>Console Log</td>
       <td>Available</td>
       <td>Jenkins Build Console Output</td>
     </tr>
-    <tr>
-      <td>Build Artifact</td>
-      <td>Archived</td>
-      <td>Jenkins Build Artifacts</td>
-    </tr>
   </table>
 
   <hr/>
   <p class="muted">
-    This is an automated report generated by Jenkins, Docker and Newman.
-    Please review the attached Newman HTML report for full request, response, assertion and execution details.
+    This is an automated multi-collection, multi-environment API test report.
+    Please review attached Newman HTML reports for full request, response and assertion details.
   </p>
 </body>
 </html>
