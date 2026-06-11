@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     triggers {
-        cron('0 7,19 * * *')
+        cron('0 0,12 * * *')
     }
 
     environment {
@@ -67,18 +67,20 @@ pipeline {
                             ${DOCKER_IMAGE_NAME} \
                             sh -c 'npm run test:postman; TEST_EXIT=$?; if [ "$TEST_EXIT" -eq 0 ]; then export BUILD_STATUS="SUCCESS"; else export BUILD_STATUS="FAILURE"; fi; echo "===== ENV INSIDE DOCKER ====="; printenv | grep -E "JOB_NAME|BUILD_NUMBER|BUILD_URL|GIT_COMMIT|BRANCH_NAME|BUILD_STATUS"; node scripts/generate-email-report.js || true; exit $TEST_EXIT'
 
+                        set +e
                         docker start -a ${CONTAINER_NAME}
-
                         TEST_EXIT=$?
+                        set -e
 
                         mkdir -p reports/html reports/junit reports/json reports/email
 
+                        echo "===== COPY REPORTS FROM DOCKER CONTAINER TO JENKINS WORKSPACE ====="
                         docker cp ${CONTAINER_NAME}:/app/reports/. reports/ || true
-
-                        docker rm -f ${CONTAINER_NAME} || true
 
                         echo "===== REPORTS GENERATED IN JENKINS WORKSPACE ====="
                         find reports -maxdepth 3 -type f | sort || true
+
+                        docker rm -f ${CONTAINER_NAME} || true
 
                         exit $TEST_EXIT
                     '''
