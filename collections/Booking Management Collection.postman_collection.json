@@ -1,0 +1,723 @@
+{
+  "info": {
+    "_postman_id": "7390e13b-f5ac-43be-80f0-ac591e854f09",
+    "name": "Booking Management Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "46052840",
+    "_collection_link": "https://go.postman.co/collection/46052840-7390e13b-f5ac-43be-80f0-ac591e854f09?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "01_Auth",
+      "item": [
+        {
+          "name": "Auth - CreateToken",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Validate required environment variables",
+                  "const requiredEnvVars = ['URL'];",
+                  "",
+                  "requiredEnvVars.forEach((key) => {",
+                  "  const value = pm.environment.get(key);",
+                  "",
+                  "  if (!value) {",
+                  "    throw new Error(`Missing required environment variable: ${key}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "// Generate dynamic tracking data for this auth request",
+                  "const timestamp = Date.now();",
+                  "const randomNumber = Math.floor(100000 + Math.random() * 900000);",
+                  "",
+                  "const authRequestId = `AUTH_${timestamp}_${randomNumber}`;",
+                  "const authRequestedAt = new Date().toISOString();",
+                  "",
+                  "pm.environment.set('authRequestId', authRequestId);",
+                  "pm.environment.set('authRequestedAt', authRequestedAt);",
+                  "",
+                  "// Clear old auth data before requesting a new token",
+                  "pm.environment.unset('authToken');",
+                  "pm.environment.unset('authCookie');"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code should be 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response time should be acceptable', function () {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});",
+                  "",
+                  "pm.test('Response should be valid JSON', function () {",
+                  "  pm.response.to.be.json;",
+                  "});",
+                  "",
+                  "let jsonData = {};",
+                  "",
+                  "pm.test('Response body should be parsed safely', function () {",
+                  "  try {",
+                  "    jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "  } catch (error) {",
+                  "    throw new Error(`Response is not valid JSON: ${error.message}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "pm.test('Response should contain token', function () {",
+                  "  pm.expect(jsonData).to.have.property('token');",
+                  "  pm.expect(jsonData.token).to.be.a('string');",
+                  "  pm.expect(jsonData.token.trim()).to.not.be.empty;",
+                  "});",
+                  "",
+                  "if (jsonData && typeof jsonData.token === 'string' && jsonData.token.trim()) {",
+                  "  const token = jsonData.token.trim();",
+                  "",
+                  "  pm.environment.set('authToken', token);",
+                  "  pm.environment.set('authCookie', `token=${token}`);",
+                  "}",
+                  "",
+                  "pm.test('Auth token should be saved to environment', function () {",
+                  "  pm.expect(pm.environment.get('authToken')).to.be.a('string');",
+                  "  pm.expect(pm.environment.get('authToken')).to.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('Auth cookie should be prepared for protected booking APIs', function () {",
+                  "  pm.expect(pm.environment.get('authCookie')).to.eql(`token=${pm.environment.get('authToken')}`);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/auth",
+              "host": [
+                "{{URL}}"
+              ],
+              "path": [
+                "auth"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02_Booking",
+      "item": [
+        {
+          "name": "GetBookingIds",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const requiredEnvVars = ['URL'];",
+                  "",
+                  "requiredEnvVars.forEach((key) => {",
+                  "  const value = pm.environment.get(key);",
+                  "",
+                  "  if (!value) {",
+                  "    throw new Error(`Missing required environment variable: ${key}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "const timestamp = Date.now();",
+                  "const randomNumber = Math.floor(100000 + Math.random() * 900000);",
+                  "",
+                  "pm.environment.set('getBookingIdsRequestId', `GET_BOOKING_IDS_${timestamp}_${randomNumber}`);",
+                  "pm.environment.set('getBookingIdsRequestedAt', new Date().toISOString());"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code should be 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response time should be acceptable', function () {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});",
+                  "",
+                  "pm.test('Response should be valid JSON', function () {",
+                  "  pm.response.to.be.json;",
+                  "});",
+                  "",
+                  "let jsonData = [];",
+                  "",
+                  "pm.test('Response body should be parsed safely', function () {",
+                  "  try {",
+                  "    jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "  } catch (error) {",
+                  "    throw new Error(`Response is not valid JSON: ${error.message}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "pm.test('Response should be an array of booking ids', function () {",
+                  "  pm.expect(jsonData).to.be.an('array');",
+                  "",
+                  "  jsonData.forEach((item) => {",
+                  "    pm.expect(item).to.be.an('object');",
+                  "    pm.expect(item).to.have.property('bookingid');",
+                  "    pm.expect(item.bookingid).to.be.a('number');",
+                  "    pm.expect(item.bookingid).to.be.above(0);",
+                  "  });",
+                  "});",
+                  "",
+                  "if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0].bookingid) {",
+                  "  pm.environment.set('firstBookingId', String(jsonData[0].bookingid));",
+                  "",
+                  "  if (!pm.environment.get('bookingId')) {",
+                  "    pm.environment.set('bookingId', String(jsonData[0].bookingid));",
+                  "  }",
+                  "}",
+                  "",
+                  "pm.test('firstBookingId should be saved when response has data', function () {",
+                  "  if (jsonData.length > 0) {",
+                  "    pm.expect(pm.environment.get('firstBookingId')).to.not.be.empty;",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{URL}}/booking",
+              "host": [
+                "{{URL}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CreateBooking",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const requiredEnvVars = ['URL'];",
+                  "",
+                  "requiredEnvVars.forEach((key) => {",
+                  "  const value = pm.environment.get(key);",
+                  "",
+                  "  if (!value) {",
+                  "    throw new Error(`Missing required environment variable: ${key}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "function formatDate(date) {",
+                  "  return date.toISOString().split('T')[0];",
+                  "}",
+                  "",
+                  "const timestamp = Date.now();",
+                  "const randomNumber = Math.floor(100000 + Math.random() * 900000);",
+                  "",
+                  "const checkinDate = new Date();",
+                  "checkinDate.setDate(checkinDate.getDate() + 7);",
+                  "",
+                  "const checkoutDate = new Date();",
+                  "checkoutDate.setDate(checkoutDate.getDate() + 10);",
+                  "",
+                  "pm.environment.set('createBookingRequestId', `CREATE_BOOKING_${timestamp}_${randomNumber}`);",
+                  "pm.environment.set('createFirstname', `First${randomNumber}`);",
+                  "pm.environment.set('createLastname', `Last${timestamp}`);",
+                  "pm.environment.set('createTotalPrice', String(Math.floor(100 + Math.random() * 900)));",
+                  "pm.environment.set('createDepositPaid', String(Math.random() >= 0.5));",
+                  "pm.environment.set('createCheckinDate', formatDate(checkinDate));",
+                  "pm.environment.set('createCheckoutDate', formatDate(checkoutDate));",
+                  "pm.environment.set('createAdditionalNeeds', `Breakfast ${randomNumber}`);",
+                  "",
+                  "pm.environment.unset('createdBookingId');"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code should be 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response should be valid JSON', function () {",
+                  "  pm.response.to.be.json;",
+                  "});",
+                  "",
+                  "let jsonData = {};",
+                  "",
+                  "pm.test('Response body should be parsed safely', function () {",
+                  "  try {",
+                  "    jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "  } catch (error) {",
+                  "    throw new Error(`Response is not valid JSON: ${error.message}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "pm.test('Response should contain bookingid and booking object', function () {",
+                  "  pm.expect(jsonData).to.have.property('bookingid');",
+                  "  pm.expect(jsonData.bookingid).to.be.a('number');",
+                  "  pm.expect(jsonData.bookingid).to.be.above(0);",
+                  "",
+                  "  pm.expect(jsonData).to.have.property('booking');",
+                  "  pm.expect(jsonData.booking).to.be.an('object');",
+                  "});",
+                  "",
+                  "pm.test('Booking response should match request data', function () {",
+                  "  const booking = jsonData.booking;",
+                  "",
+                  "  pm.expect(booking.firstname).to.eql(pm.environment.get('createFirstname'));",
+                  "  pm.expect(booking.lastname).to.eql(pm.environment.get('createLastname'));",
+                  "  pm.expect(booking.totalprice).to.eql(Number(pm.environment.get('createTotalPrice')));",
+                  "  pm.expect(booking.depositpaid).to.eql(pm.environment.get('createDepositPaid') === 'true');",
+                  "  pm.expect(booking.bookingdates.checkin).to.eql(pm.environment.get('createCheckinDate'));",
+                  "  pm.expect(booking.bookingdates.checkout).to.eql(pm.environment.get('createCheckoutDate'));",
+                  "  pm.expect(booking.additionalneeds).to.eql(pm.environment.get('createAdditionalNeeds'));",
+                  "});",
+                  "",
+                  "// Save booking id for next requests",
+                  "if (jsonData && typeof jsonData.bookingid === 'number') {",
+                  "  pm.environment.set('createdBookingId', String(jsonData.bookingid));",
+                  "  pm.environment.set('bookingId', String(jsonData.bookingid));",
+                  "}",
+                  "",
+                  "pm.test('createdBookingId should be saved for GetBooking request', function () {",
+                  "  pm.expect(pm.environment.get('createdBookingId')).to.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('bookingId should be saved for next booking requests', function () {",
+                  "  pm.expect(pm.environment.get('bookingId')).to.not.be.empty;",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"{{createFirstname}}\",\n  \"lastname\": \"{{createLastname}}\",\n  \"totalprice\": {{createTotalPrice}},\n  \"depositpaid\": {{createDepositPaid}},\n  \"bookingdates\": {\n    \"checkin\": \"{{createCheckinDate}}\",\n    \"checkout\": \"{{createCheckoutDate}}\"\n  },\n  \"additionalneeds\": \"{{createAdditionalNeeds}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/booking",
+              "host": [
+                "{{URL}}"
+              ],
+              "path": [
+                "booking"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GetBooking",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const requiredEnvVars = ['URL', 'bookingId'];",
+                  "",
+                  "requiredEnvVars.forEach((key) => {",
+                  "  const value = pm.environment.get(key);",
+                  "",
+                  "  if (!value) {",
+                  "    throw new Error(",
+                  "      `Missing required environment variable: ${key}. Please run CreateBooking request before GetBooking.`",
+                  "    );",
+                  "  }",
+                  "});",
+                  "",
+                  "const bookingId = pm.environment.get('bookingId');",
+                  "",
+                  "if (!/^\\d+$/.test(bookingId)) {",
+                  "  throw new Error(`Invalid bookingId. Expected positive number but got: ${bookingId}`);",
+                  "}",
+                  "",
+                  "pm.environment.set('getBookingRequestId', `GET_BOOKING_${Date.now()}_${bookingId}`);",
+                  "pm.environment.set('getBookingRequestedAt', new Date().toISOString());"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code should be 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response time should be acceptable', function () {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});",
+                  "",
+                  "pm.test('Response should be valid JSON', function () {",
+                  "  pm.response.to.be.json;",
+                  "});",
+                  "",
+                  "let jsonData = {};",
+                  "",
+                  "pm.test('Response body should be parsed safely', function () {",
+                  "  try {",
+                  "    jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "  } catch (error) {",
+                  "    throw new Error(`Response is not valid JSON: ${error.message}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "pm.test('Response should contain booking detail fields', function () {",
+                  "  pm.expect(jsonData).to.have.property('firstname');",
+                  "  pm.expect(jsonData.firstname).to.be.a('string');",
+                  "",
+                  "  pm.expect(jsonData).to.have.property('lastname');",
+                  "  pm.expect(jsonData.lastname).to.be.a('string');",
+                  "",
+                  "  pm.expect(jsonData).to.have.property('totalprice');",
+                  "  pm.expect(jsonData.totalprice).to.be.a('number');",
+                  "",
+                  "  pm.expect(jsonData).to.have.property('depositpaid');",
+                  "  pm.expect(jsonData.depositpaid).to.be.a('boolean');",
+                  "",
+                  "  pm.expect(jsonData).to.have.property('bookingdates');",
+                  "  pm.expect(jsonData.bookingdates).to.be.an('object');",
+                  "",
+                  "  pm.expect(jsonData.bookingdates).to.have.property('checkin');",
+                  "  pm.expect(jsonData.bookingdates.checkin).to.be.a('string');",
+                  "",
+                  "  pm.expect(jsonData.bookingdates).to.have.property('checkout');",
+                  "  pm.expect(jsonData.bookingdates.checkout).to.be.a('string');",
+                  "",
+                  "  pm.expect(jsonData).to.have.property('additionalneeds');",
+                  "  pm.expect(jsonData.additionalneeds).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('GetBooking response should match created booking data', function () {",
+                  "  pm.expect(jsonData.firstname).to.eql(pm.environment.get('createFirstname'));",
+                  "  pm.expect(jsonData.lastname).to.eql(pm.environment.get('createLastname'));",
+                  "  pm.expect(jsonData.totalprice).to.eql(Number(pm.environment.get('createTotalPrice')));",
+                  "  pm.expect(jsonData.depositpaid).to.eql(pm.environment.get('createDepositPaid') === 'true');",
+                  "  pm.expect(jsonData.bookingdates.checkin).to.eql(pm.environment.get('createCheckinDate'));",
+                  "  pm.expect(jsonData.bookingdates.checkout).to.eql(pm.environment.get('createCheckoutDate'));",
+                  "  pm.expect(jsonData.additionalneeds).to.eql(pm.environment.get('createAdditionalNeeds'));",
+                  "});",
+                  "",
+                  "pm.environment.set('currentBookingFirstname', jsonData.firstname);",
+                  "pm.environment.set('currentBookingLastname', jsonData.lastname);",
+                  "pm.environment.set('currentBookingTotalPrice', String(jsonData.totalprice));",
+                  "pm.environment.set('currentBookingDepositPaid', String(jsonData.depositpaid));",
+                  "pm.environment.set('currentBookingCheckinDate', jsonData.bookingdates.checkin);",
+                  "pm.environment.set('currentBookingCheckoutDate', jsonData.bookingdates.checkout);",
+                  "pm.environment.set('currentBookingAdditionalNeeds', jsonData.additionalneeds);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{URL}}/booking/{{createdBookingId}}",
+              "host": [
+                "{{URL}}"
+              ],
+              "path": [
+                "booking",
+                "{{createdBookingId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateBooking",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const requiredEnvVars = ['URL', 'authCookie', 'bookingId', 'createdBookingId'];",
+                  "",
+                  "requiredEnvVars.forEach((key) => {",
+                  "  const value = pm.environment.get(key);",
+                  "",
+                  "  if (!value) {",
+                  "    throw new Error(",
+                  "      `Missing required environment variable: ${key}. Please run Auth - CreateToken and CreateBooking before UpdateBooking.`",
+                  "    );",
+                  "  }",
+                  "});",
+                  "",
+                  "const bookingId = pm.environment.get('bookingId');",
+                  "const createdBookingId = pm.environment.get('createdBookingId');",
+                  "",
+                  "if (bookingId !== createdBookingId) {",
+                  "  throw new Error(",
+                  "    `bookingId mismatch. UpdateBooking must use bookingId from CreateBooking. bookingId=${bookingId}, createdBookingId=${createdBookingId}`",
+                  "  );",
+                  "}",
+                  "",
+                  "if (!/^\\d+$/.test(bookingId)) {",
+                  "  throw new Error(`Invalid bookingId. Expected positive number but got: ${bookingId}`);",
+                  "}",
+                  "",
+                  "function formatDate(date) {",
+                  "  return date.toISOString().split('T')[0];",
+                  "}",
+                  "",
+                  "const timestamp = Date.now();",
+                  "const randomNumber = Math.floor(100000 + Math.random() * 900000);",
+                  "",
+                  "const checkinDate = new Date();",
+                  "checkinDate.setDate(checkinDate.getDate() + 14);",
+                  "",
+                  "const checkoutDate = new Date();",
+                  "checkoutDate.setDate(checkoutDate.getDate() + 18);",
+                  "",
+                  "pm.environment.set('updateBookingRequestId', `UPDATE_BOOKING_${timestamp}_${bookingId}`);",
+                  "pm.environment.set('updateFirstname', `UpdatedFirst${randomNumber}`);",
+                  "pm.environment.set('updateLastname', `UpdatedLast${timestamp}`);",
+                  "pm.environment.set('updateTotalPrice', String(Math.floor(200 + Math.random() * 800)));",
+                  "pm.environment.set('updateDepositPaid', String(Math.random() >= 0.5));",
+                  "pm.environment.set('updateCheckinDate', formatDate(checkinDate));",
+                  "pm.environment.set('updateCheckoutDate', formatDate(checkoutDate));",
+                  "pm.environment.set('updateAdditionalNeeds', `Updated Breakfast ${randomNumber}`);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code should be 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response should be valid JSON', function () {",
+                  "  pm.response.to.be.json;",
+                  "});",
+                  "",
+                  "let jsonData = {};",
+                  "",
+                  "pm.test('Response body should be parsed safely', function () {",
+                  "  try {",
+                  "    jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "  } catch (error) {",
+                  "    throw new Error(`Response is not valid JSON: ${error.message}`);",
+                  "  }",
+                  "});",
+                  "",
+                  "pm.test('Updated booking response should match request data', function () {",
+                  "  pm.expect(jsonData.firstname).to.eql(pm.environment.get('updateFirstname'));",
+                  "  pm.expect(jsonData.lastname).to.eql(pm.environment.get('updateLastname'));",
+                  "  pm.expect(jsonData.totalprice).to.eql(Number(pm.environment.get('updateTotalPrice')));",
+                  "  pm.expect(jsonData.depositpaid).to.eql(pm.environment.get('updateDepositPaid') === 'true');",
+                  "  pm.expect(jsonData.bookingdates.checkin).to.eql(pm.environment.get('updateCheckinDate'));",
+                  "  pm.expect(jsonData.bookingdates.checkout).to.eql(pm.environment.get('updateCheckoutDate'));",
+                  "  pm.expect(jsonData.additionalneeds).to.eql(pm.environment.get('updateAdditionalNeeds'));",
+                  "});",
+                  "",
+                  "// Keep same bookingId for PartialUpdateBooking and DeleteBooking",
+                  "pm.environment.set('updatedBookingId', pm.environment.get('bookingId'));",
+                  "pm.environment.set('updatedBookingFirstname', jsonData.firstname);",
+                  "pm.environment.set('updatedBookingLastname', jsonData.lastname);",
+                  "",
+                  "pm.test('bookingId should still be available after UpdateBooking', function () {",
+                  "  pm.expect(pm.environment.get('bookingId')).to.eql(pm.environment.get('createdBookingId'));",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Cookie",
+                "value": "{{authCookie}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"{{updateFirstname}}\",\n  \"lastname\": \"{{updateLastname}}\",\n  \"totalprice\": {{updateTotalPrice}},\n  \"depositpaid\": {{updateDepositPaid}},\n  \"bookingdates\": {\n    \"checkin\": \"{{updateCheckinDate}}\",\n    \"checkout\": \"{{updateCheckoutDate}}\"\n  },\n  \"additionalneeds\": \"{{updateAdditionalNeeds}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/booking/{{bookingId}}",
+              "host": [
+                "{{URL}}"
+              ],
+              "path": [
+                "booking",
+                "{{bookingId}}"
+              ],
+              "query": [
+                {
+                  "key": "Content-Type",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PartialUpdateBooking",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "DeleteBooking",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "dataFirstName",
+      "value": ""
+    },
+    {
+      "key": "dataLastName",
+      "value": ""
+    },
+    {
+      "key": "dataTotalPrice",
+      "value": ""
+    },
+    {
+      "key": "dataDepositPaid",
+      "value": ""
+    },
+    {
+      "key": "dataCheckIn",
+      "value": ""
+    },
+    {
+      "key": "dataCheckOut",
+      "value": ""
+    },
+    {
+      "key": "dataAdditionalNeeds",
+      "value": ""
+    }
+  ]
+}
