@@ -8,6 +8,7 @@ const ENV_DIR = path.join(ROOT, 'environments');
 
 function escapeHtml(value) {
   if (value === undefined || value === null || value === '') return 'N/A';
+
   return String(value)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -59,6 +60,7 @@ function readEnvironmentInfo() {
       try {
         const env = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         const values = env.values || [];
+
         const urlItem =
           values.find(item => item.key === 'URL') ||
           values.find(item => item.key === 'BASE_URL') ||
@@ -82,7 +84,8 @@ function parseReportName(fileName, collectionNameFromReport) {
   const cleanName = fileName.replace('-newman-report.json', '');
 
   const envFiles = fs.existsSync(ENV_DIR)
-    ? fs.readdirSync(ENV_DIR)
+    ? fs
+        .readdirSync(ENV_DIR)
         .filter(file => file.endsWith('.postman_environment.json'))
         .map(file => file.replace('.postman_environment.json', ''))
     : [];
@@ -126,10 +129,10 @@ function main() {
 
   let totalRequests = 0;
   let failedRequests = 0;
-  let totalAssertions = 0;
-  let failedAssertions = 0;
-  let totalTestScripts = 0;
-  let failedTestScripts = 0;
+
+  let totalAssertionsForReport = 0;
+  let passedAssertionsForReport = 0;
+  let failedAssertionsForReport = 0;
 
   for (const jsonFile of jsonFiles) {
     const fileName = path.basename(jsonFile);
@@ -145,23 +148,38 @@ function main() {
     const requestFailed = stats.requests?.failed || 0;
     const requestPassed = Math.max(requestTotal - requestFailed, 0);
 
-    const assertionTotal = stats.assertions?.total || 0;
-    const assertionFailed = stats.assertions?.failed || 0;
-    const assertionPassed = Math.max(assertionTotal - assertionFailed, 0);
+    const rawAssertionTotal = stats.assertions?.total || 0;
+    const rawAssertionFailed = stats.assertions?.failed || 0;
+    const rawAssertionPassed = Math.max(rawAssertionTotal - rawAssertionFailed, 0);
 
-    const scriptTotal = stats.testScripts?.total || 0;
-    const scriptFailed = stats.testScripts?.failed || 0;
-    const scriptPassed = Math.max(scriptTotal - scriptFailed, 0);
+    /**
+     * Important:
+     * Newman separates request errors from assertion failures.
+     *
+     * Example from console:
+     * requests.failed = 2
+     * assertions.failed = 0
+     *
+     * From QA report perspective, failed request executions must be visible in:
+     * - Overall Test Execution Summary -> Assertions row
+     * - Collection x Environment Result Matrix -> Failed column
+     *
+     * Therefore we calculate report-level failed checks as:
+     * assertion failures + request failures.
+     */
+    const reportAssertionFailed = rawAssertionFailed + requestFailed;
+    const reportAssertionPassed = rawAssertionPassed;
+    const reportAssertionTotal = rawAssertionTotal + requestFailed;
 
     const failures = run.failures || [];
-    const runFailed = requestFailed > 0 || assertionFailed > 0 || scriptFailed > 0 || failures.length > 0;
+    const runFailed = requestFailed > 0 || rawAssertionFailed > 0 || failures.length > 0;
 
     totalRequests += requestTotal;
     failedRequests += requestFailed;
-    totalAssertions += assertionTotal;
-    failedAssertions += assertionFailed;
-    totalTestScripts += scriptTotal;
-    failedTestScripts += scriptFailed;
+
+    totalAssertionsForReport += reportAssertionTotal;
+    passedAssertionsForReport += reportAssertionPassed;
+    failedAssertionsForReport += reportAssertionFailed;
 
     results.push({
       collectionName: parsedName.collectionName,
@@ -169,19 +187,16 @@ function main() {
       requestTotal,
       requestPassed,
       requestFailed,
-      assertionTotal,
-      assertionPassed,
-      assertionFailed,
-      scriptTotal,
-      scriptPassed,
-      scriptFailed,
-      passRate: percent(assertionPassed, assertionTotal),
+      assertionTotal: reportAssertionTotal,
+      assertionPassed: reportAssertionPassed,
+      assertionFailed: reportAssertionFailed,
+      passRate: percent(reportAssertionPassed, reportAssertionTotal),
       status: runFailed ? 'FAILED' : 'PASSED',
       htmlReport: fileName.replace('-newman-report.json', '-report.html'),
     });
 
     failures.forEach(failure => {
-      const errorName = failure.error?.name || 'Unknown Error';
+      const errorName = failure.error?.name || 'Error';
       const errorMessage = failure.error?.message || 'No error message';
       const failedItem =
         failure.source?.name ||
@@ -193,15 +208,13 @@ function main() {
         collectionName: parsedName.collectionName,
         environmentName: parsedName.environmentName,
         failedItem,
-        failureType: errorName.includes('Assertion') ? 'Assertion' : 'Request / Script',
+        failureType: errorName,
         errorMessage,
       });
     });
   }
 
   const passedRequests = Math.max(totalRequests - failedRequests, 0);
-  const passedAssertions = Math.max(totalAssertions - failedAssertions, 0);
-  const passedTestScripts = Math.max(totalTestScripts - failedTestScripts, 0);
 
   const totalRuns = results.length;
   const failedRuns = results.filter(item => item.status === 'FAILED').length;
@@ -213,7 +226,9 @@ function main() {
   const buildStatus = process.env.BUILD_STATUS || (failedRuns > 0 ? 'FAILURE' : 'SUCCESS');
   const statusColor = buildStatus === 'SUCCESS' ? '#16a34a' : '#dc2626';
 
-  const resultRows = results.map((item, index) => `
+  const resultRows = results
+    .map(
+      (item, index) => `
     <tr>
       <td>${index + 1}</td>
       <td>${escapeHtml(item.collectionName)}</td>
@@ -225,17 +240,22 @@ function main() {
       <td>${statusBadge(item.status)}</td>
       <td>${escapeHtml(item.htmlReport)}</td>
     </tr>
-  `).join('');
+  `
+    )
+    .join('');
 
-  const failedRows = failedItems.length === 0
-    ? `
+  const failedRows =
+    failedItems.length === 0
+      ? `
       <tr>
         <td colspan="7" style="color:#16a34a;font-weight:bold;">
           No failed test detected. All collections and environments passed successfully.
         </td>
       </tr>
     `
-    : failedItems.map((item, index) => `
+      : failedItems
+          .map(
+            (item, index) => `
       <tr>
         <td>${index + 1}</td>
         <td>${escapeHtml(item.collectionName)}</td>
@@ -243,26 +263,33 @@ function main() {
         <td>${escapeHtml(item.failedItem)}</td>
         <td>${escapeHtml(item.failureType)}</td>
         <td>${escapeHtml(item.errorMessage)}</td>
-        <td>Review request, response, test data, environment variables and assertion logic.</td>
+        <td>Review request URL, method, environment variables, request dependency and assertion logic.</td>
       </tr>
-    `).join('');
+    `
+          )
+          .join('');
 
   const envInfo = readEnvironmentInfo();
 
-  const envRows = envInfo.length === 0
-    ? `
+  const envRows =
+    envInfo.length === 0
+      ? `
       <tr>
         <td colspan="4">No environment files found.</td>
       </tr>
     `
-    : envInfo.map(item => `
+      : envInfo
+          .map(
+            item => `
       <tr>
         <td>${item.no}</td>
         <td>${escapeHtml(item.envName)}</td>
         <td>${escapeHtml(item.baseUrl)}</td>
-        <td>Executed if matched by Newman run</td>
+        <td>Executed</td>
       </tr>
-    `).join('');
+    `
+          )
+          .join('');
 
   const html = `
 <!DOCTYPE html>
@@ -386,17 +413,10 @@ function main() {
     </tr>
     <tr>
       <td>Assertions</td>
-      <td>${totalAssertions}</td>
-      <td style="color:#16a34a;font-weight:bold;">${passedAssertions}</td>
-      <td style="color:#dc2626;font-weight:bold;">${failedAssertions}</td>
-      <td>${percent(passedAssertions, totalAssertions)}%</td>
-    </tr>
-    <tr>
-      <td>Test Scripts</td>
-      <td>${totalTestScripts}</td>
-      <td style="color:#16a34a;font-weight:bold;">${passedTestScripts}</td>
-      <td style="color:#dc2626;font-weight:bold;">${failedTestScripts}</td>
-      <td>${percent(passedTestScripts, totalTestScripts)}%</td>
+      <td>${totalAssertionsForReport}</td>
+      <td style="color:#16a34a;font-weight:bold;">${passedAssertionsForReport}</td>
+      <td style="color:#dc2626;font-weight:bold;">${failedAssertionsForReport}</td>
+      <td>${percent(passedAssertionsForReport, totalAssertionsForReport)}%</td>
     </tr>
   </table>
 
@@ -504,8 +524,8 @@ function main() {
 
   <hr/>
   <p class="muted">
-    This is an automated multi-collection, multi-environment API test report.
-    Please review attached Newman HTML reports for full request, response and assertion details.
+    Note: Newman separates assertion failures and request execution errors.
+    This email report counts failed request executions as failed checks so QA summary and matrix reflect the real failed result.
   </p>
 </body>
 </html>
